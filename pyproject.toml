@@ -1,0 +1,23 @@
+[project]
+name = "tunawrap"
+version = "0.1.0"
+description = "A wrapper around optuna for easier hyperparameter tuning."
+readme = "README.md"
+requires-python = ">=3.12"
+dependencies = [
+    "optuna>=4.4.0",
+    "pandas>=2.3.1",
+    "plotly>=6.2.0",
+]
+
+[project.optional-dependencies]
+sklearn = [
+    "scikit-learn>=1.7.1",
+]
+
+[dependency-groups]
+dev = [
+    "ipython>=9.4.0",
+    "jupyter>=1.1.1",
+    "ruff>=0.12.7",
+]
