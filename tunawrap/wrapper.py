@@ -3,23 +3,26 @@ This module provides the TunaWrap class, which wraps around optuna for models us
 the scikit-learn API. It allows for easy hyperparameter optimization using the Optuna library.
 """
 
-from typing import TYPE_CHECKING, Any, Callable
+from typing import TYPE_CHECKING, Callable
 
 import optuna
 from sklearn.base import clone
-from sklearn.model_selection import BaseCrossValidator, KFold, cross_val_score
+from sklearn.model_selection import KFold, cross_val_score
 
 if TYPE_CHECKING:
     import pandas as pd
 
 
 class TunaWrap:
-    """
-    A wrapper around Optuna for hyperparameter optimization of scikit-learn compatible models.
+    """A wrapper around Optuna for hyperparameter optimization of scikit-learn compatible models.
 
     TunaWrap simplifies the process of finding optimal hyperparameters for machine learning
     models by providing a clean interface to Optuna's optimization capabilities. It supports
     two approaches for providing models: using sklearn's clone() or a factory function.
+
+    Attributes:
+        study (optuna.Study): The Optuna study object containing optimization results.
+            Available after calling cook().
 
     Example:
         >>> from sklearn.ensemble import RandomForestClassifier
@@ -41,10 +44,6 @@ class TunaWrap:
         ...     random_state=42
         ... )
         >>> best_params = wrapper.cook(n_trials=100)
-
-    Attributes:
-        study (optuna.Study): The Optuna study object containing optimization results.
-            Available after calling cook().
     """
 
     def __init__(
@@ -59,11 +58,10 @@ class TunaWrap:
         model_factory: Callable | None = None,
         random_state: int | None = None,
     ):
-        """
-        Initialize the TunaWrap optimizer.
+        """Initialize the TunaWrap optimizer.
 
         Args:
-            parameters (dict): Dictionary defining the hyperparameter search space.
+            parameters: Dictionary defining the hyperparameter search space.
                 Each key is a parameter name, and each value is a dict with:
                 - 'type': Either 'int', 'float', or 'categorical'
                 - For 'int'/'float': 'low' and 'high' bounds
@@ -74,35 +72,25 @@ class TunaWrap:
                         'max_depth': {'type': 'int', 'low': 5, 'high': 30},
                         'criterion': {'type': 'categorical', 'choices': ['gini', 'entropy']}
                     }
-
-            X (pd.DataFrame): Training features.
-
-            y (pd.Series): Training target labels.
-
-            scorer (Callable): Scoring function (e.g., from sklearn.metrics.make_scorer).
-
-            folds (int | None, optional): Number of cross-validation folds. If specified,
-                creates a KFold splitter. Ignored if cv is provided. Defaults to None.
-
-            cv (optional): A cross-validation splitter object (e.g., StratifiedKFold, 
-                KFold, etc.). If provided, this takes precedence over folds parameter.
-                Defaults to None.
-
-            model (optional): A scikit-learn compatible model instance. TunaWrap will use
+            X: Training features.
+            y: Training target labels.
+            scorer: Scoring function (e.g., from sklearn.metrics.make_scorer).
+            folds: Number of cross-validation folds. If specified, creates a KFold splitter.
+                Ignored if cv is provided. Defaults to None.
+            cv: A cross-validation splitter object (e.g., StratifiedKFold, KFold, etc.).
+                If provided, this takes precedence over folds parameter. Defaults to None.
+            model: A scikit-learn compatible model instance. TunaWrap will use
                 sklearn.base.clone() to create fresh copies for each trial. Cannot be
                 used together with model_factory. Defaults to None.
-
-            model_factory (Callable | None, optional): A callable that returns a fresh
-                model instance for each trial. Cannot be used together with model.
-                Defaults to None.
-
-            random_state (int | None, optional): Random seed for reproducibility. Controls
-                both the KFold cross-validation splits (if folds is used) and Optuna's 
-                TPE sampler. If None, results will vary between runs. Defaults to None.
+            model_factory: A callable that returns a fresh model instance for each trial.
+                Cannot be used together with model. Defaults to None.
+            random_state: Random seed for reproducibility. Controls both the KFold
+                cross-validation splits (if folds is used) and Optuna's TPE sampler.
+                If None, results will vary between runs. Defaults to None.
 
         Raises:
-            ValueError: If both model and model_factory are provided, or if neither is provided,
-                or if neither folds nor cv is provided.
+            ValueError: If both model and model_factory are provided, or if neither is
+                provided, or if neither folds nor cv is provided.
         """
         # Support both approaches: model (with clone) or model_factory
         if model is not None and model_factory is not None:
@@ -122,8 +110,6 @@ class TunaWrap:
         self.cv = cv
         self.random_state = random_state
 
-        # Pre-generate CV splits
-        # If cv object is provided, use it directly; otherwise create KFold from folds
         if cv is not None:
             self.cv_splitter = cv
             self.cv_splits = list(self.cv_splitter.split(X, y))
@@ -136,39 +122,35 @@ class TunaWrap:
             self.cv_splits = None
 
     def cook(self, n_trials=20, timeout_seconds=None, debug=False, study=None):
-        """
-        Run hyperparameter optimization using Optuna.
+        """Run hyperparameter optimization using Optuna.
 
         This method performs Bayesian optimization using Optuna's TPE (Tree-structured
         Parzen Estimator) sampler to find the best hyperparameters for the model. Each
         trial evaluates a different set of hyperparameters using cross-validation.
 
         Args:
-            n_trials (int, optional): Number of optimization trials to run. Each trial
-                tests a different combination of hyperparameters. Defaults to 20.
-
-            timeout_seconds (int | None, optional): Maximum time in seconds for the
-                entire optimization. If specified, optimization stops after this duration
-                even if n_trials haven't completed. Defaults to None (no timeout).
-
-            debug (bool, optional): If True, prints detailed debugging information for
-                each trial, including model IDs, parameters before/after setting, and
-                cross-validation scores. Useful for troubleshooting. Defaults to False.
-
-            study (optuna.Study | None, optional): An existing Optuna study to continue
-                optimization from. If provided, this study will be used instead of creating
-                a new one. Useful for warm-starting with enqueued trials or resuming
-                previous optimizations. Defaults to None (creates new study).
+            n_trials: Number of optimization trials to run. Each trial tests a different
+                combination of hyperparameters. Defaults to 20.
+            timeout_seconds: Maximum time in seconds for the entire optimization.
+                If specified, optimization stops after this duration even if n_trials
+                haven't completed. Defaults to None (no timeout).
+            debug: If True, prints detailed debugging information for each trial, including
+                model IDs, parameters before/after setting, and cross-validation scores.
+                Useful for troubleshooting. Defaults to False.
+            study: An existing Optuna study to continue optimization from. If provided,
+                this study will be used instead of creating a new one. Useful for
+                warm-starting with enqueued trials or resuming previous optimizations.
+                Defaults to None (creates new study).
 
         Returns:
-            dict: The best hyperparameters found during optimization.
+            The best hyperparameters found during optimization.
 
         Example:
             >>> # Basic usage
             >>> best_params = wrapper.cook(n_trials=100, timeout_seconds=600)
             >>> print(f"Best parameters: {best_params}")
             >>> print(f"Best score: {wrapper.study.best_value}")
-            
+
             >>> # Warm-start with previous best parameters
             >>> study = optuna.create_study(direction="maximize")
             >>> study.enqueue_trial({"n_estimators": 100, "max_depth": 5})
@@ -239,18 +221,17 @@ class TunaWrap:
         return self.study.best_params
 
     def _parse_parameters(self, trial: optuna.Trial) -> dict:
-        """
-        Parse the parameter configuration and suggest values for a trial.
+        """Parse the parameter configuration and suggest values for a trial.
 
         This internal method converts the parameter configuration dictionary into
         actual parameter values suggested by Optuna for the current trial. It supports
         integer, float, and categorical parameter types.
 
         Args:
-            trial (optuna.Trial): The Optuna trial object used to suggest parameter values.
+            trial: The Optuna trial object used to suggest parameter values.
 
         Returns:
-            dict: A dictionary mapping parameter names to their suggested values for this trial.
+            A dictionary mapping parameter names to their suggested values for this trial.
 
         Raises:
             ValueError: If an unsupported parameter type is encountered.
